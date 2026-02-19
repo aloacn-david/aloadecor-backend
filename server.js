@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const https = require('https');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -12,6 +14,42 @@ const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN || '';
 // 启用 CORS
 app.use(cors());
 app.use(express.json());
+
+// 文件数据库路径
+const DATA_DIR = path.join(__dirname, 'data');
+const PLATFORM_LINKS_FILE = path.join(DATA_DIR, 'platform-links.json');
+
+// 确保数据目录存在
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+// 加载平台链接数据
+function loadPlatformLinks() {
+  try {
+    if (fs.existsSync(PLATFORM_LINKS_FILE)) {
+      const data = fs.readFileSync(PLATFORM_LINKS_FILE, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (error) {
+    console.error('[Database] Error loading platform links:', error);
+  }
+  return {};
+}
+
+// 保存平台链接数据
+function savePlatformLinks(links) {
+  try {
+    fs.writeFileSync(PLATFORM_LINKS_FILE, JSON.stringify(links, null, 2));
+    return true;
+  } catch (error) {
+    console.error('[Database] Error saving platform links:', error);
+    return false;
+  }
+}
+
+// 初始化平台链接存储
+let platformLinksStore = loadPlatformLinks();
 
 // 健康检查
 app.get('/health', (req, res) => {
@@ -325,24 +363,17 @@ app.get('/api/shopify/categories', async (req, res) => {
   }
 });
 
-// 内存存储平台链接数据（生产环境建议使用数据库）
-const platformLinksStore = new Map();
-
 // 获取所有平台链接
 app.get('/api/platform-links', (req, res) => {
   console.log('[API] Fetching all platform links');
-  const links = {};
-  platformLinksStore.forEach((value, key) => {
-    links[key] = value;
-  });
-  res.json(links);
+  res.json(platformLinksStore);
 });
 
 // 获取单个产品的平台链接
 app.get('/api/platform-links/:productId', (req, res) => {
   const { productId } = req.params;
   console.log(`[API] Fetching platform links for product: ${productId}`);
-  const links = platformLinksStore.get(productId) || {
+  const links = platformLinksStore[productId] || {
     wayfair: '',
     amazon: '',
     overstock: '',
@@ -369,11 +400,15 @@ app.post('/api/platform-links/:productId', (req, res) => {
     sanitizedLinks[platform] = links[platform] || '';
   });
   
-  platformLinksStore.set(productId, sanitizedLinks);
+  // 更新内存中的数据
+  platformLinksStore[productId] = sanitizedLinks;
+  
+  // 保存到文件
+  const saveResult = savePlatformLinks(platformLinksStore);
   
   res.json({ 
-    success: true, 
-    message: 'Platform links updated successfully',
+    success: saveResult, 
+    message: saveResult ? 'Platform links updated successfully' : 'Failed to save platform links',
     productId,
     links: sanitizedLinks
   });
@@ -396,14 +431,17 @@ app.post('/api/platform-links/bulk', (req, res) => {
   Object.keys(links).forEach(productId => {
     const productLinks = links[productId];
     if (productLinks && typeof productLinks === 'object') {
-      platformLinksStore.set(productId, productLinks);
+      platformLinksStore[productId] = productLinks;
       updatedCount++;
     }
   });
   
+  // 保存到文件
+  const saveResult = savePlatformLinks(platformLinksStore);
+  
   res.json({ 
-    success: true, 
-    message: `Updated ${updatedCount} products`,
+    success: saveResult, 
+    message: saveResult ? `Updated ${updatedCount} products` : 'Failed to save platform links',
     updatedCount
   });
 });

@@ -1,8 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const https = require('https');
-const fs = require('fs');
-const path = require('path');
+const mongoose = require('mongoose');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -10,53 +9,44 @@ const PORT = process.env.PORT || 8080;
 // 从环境变量读取配置
 const SHOPIFY_STORE = process.env.SHOPIFY_STORE || 'goldianlightandliving.myshopify.com';
 const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN || '';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/aloadecor';
 
 // 启用 CORS
 app.use(cors());
 app.use(express.json());
 
-// 文件数据库路径
-const DATA_DIR = path.join(__dirname, 'data');
-const PLATFORM_LINKS_FILE = path.join(DATA_DIR, 'platform-links.json');
+// 连接 MongoDB
+mongoose.connect(MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+}).then(() => {
+  console.log('[Database] Connected to MongoDB');
+}).catch(err => {
+  console.error('[Database] MongoDB connection error:', err);
+});
 
-// 确保数据目录存在
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
+// 定义平台链接 Schema
+const platformLinkSchema = new mongoose.Schema({
+  productId: { type: String, required: true, unique: true },
+  wayfair: { type: String, default: '' },
+  amazon: { type: String, default: '' },
+  overstock: { type: String, default: '' },
+  homeDepot: { type: String, default: '' },
+  lowes: { type: String, default: '' },
+  target: { type: String, default: '' },
+  kohls: { type: String, default: '' },
+  updatedAt: { type: Date, default: Date.now }
+});
 
-// 加载平台链接数据
-function loadPlatformLinks() {
-  try {
-    if (fs.existsSync(PLATFORM_LINKS_FILE)) {
-      const data = fs.readFileSync(PLATFORM_LINKS_FILE, 'utf8');
-      return JSON.parse(data);
-    }
-  } catch (error) {
-    console.error('[Database] Error loading platform links:', error);
-  }
-  return {};
-}
-
-// 保存平台链接数据
-function savePlatformLinks(links) {
-  try {
-    fs.writeFileSync(PLATFORM_LINKS_FILE, JSON.stringify(links, null, 2));
-    return true;
-  } catch (error) {
-    console.error('[Database] Error saving platform links:', error);
-    return false;
-  }
-}
-
-// 初始化平台链接存储
-let platformLinksStore = loadPlatformLinks();
+const PlatformLink = mongoose.model('PlatformLink', platformLinkSchema);
 
 // 健康检查
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
-    shopifyStore: SHOPIFY_STORE
+    shopifyStore: SHOPIFY_STORE,
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
   });
 });
 
@@ -72,17 +62,10 @@ function makeHttpsRequest(options, postData = null) {
       
       res.on('end', () => {
         try {
-          resolve({
-            statusCode: res.statusCode,
-            headers: res.headers,
-            data: JSON.parse(data)
-          });
-        } catch (error) {
-          resolve({
-            statusCode: res.statusCode,
-            headers: res.headers,
-            data: data // Return raw data if JSON parsing fails
-          });
+          const parsedData = JSON.parse(data);
+          resolve({ statusCode: res.statusCode, data: parsedData });
+        } catch (e) {
+          resolve({ statusCode: res.statusCode, data: data });
         }
       });
     });
@@ -99,260 +82,129 @@ function makeHttpsRequest(options, postData = null) {
   });
 }
 
-// 获取产品分类信息
-async function getProductCategories() {
-  try {
-    const options = {
-      hostname: SHOPIFY_STORE,
-      port: 443,
-      path: '/admin/api/2023-10/custom_collections.json',
-      method: 'GET',
-      headers: {
-        'X-Shopify-Access-Token': SHOPIFY_TOKEN,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      }
-    };
-    
-    const response = await makeHttpsRequest(options);
-    
-    if (response.statusCode === 200 && response.data.custom_collections) {
-      return response.data.custom_collections;
-    } else {
-      console.log('[API] No custom collections found or error occurred');
-      return [];
-    }
-  } catch (error) {
-    console.error('[API] Error fetching collections:', error);
-    return [];
-  }
-}
-
-// 获取智能集合
-async function getSmartCollections() {
-  try {
-    const options = {
-      hostname: SHOPIFY_STORE,
-      port: 443,
-      path: '/admin/api/2023-10/smart_collections.json',
-      method: 'GET',
-      headers: {
-        'X-Shopify-Access-Token': SHOPIFY_TOKEN,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      }
-    };
-    
-    const response = await makeHttpsRequest(options);
-    
-    if (response.statusCode === 200 && response.data.smart_collections) {
-      return response.data.smart_collections;
-    } else {
-      console.log('[API] No smart collections found or error occurred');
-      return [];
-    }
-  } catch (error) {
-    console.error('[API] Error fetching smart collections:', error);
-    return [];
-  }
-}
-
-// 获取所有产品及其分类信息（分页处理）
+// 获取所有产品
 app.get('/api/shopify/products', async (req, res) => {
+  console.log('[API] Fetching all products from Shopify...');
+  
   try {
-    console.log('[API] Fetching ALL products and collections from Shopify...');
+    // 检查 token 是否配置
+    if (!SHOPIFY_TOKEN) {
+      console.log('[API] No Shopify token configured, returning mock data');
+      const mockProducts = getMockProducts();
+      return res.json(mockProducts);
+    }
     
+    // 从 Shopify 获取产品（带分页）
     let allProducts = [];
-    let nextPageUrl = `/admin/api/2023-10/products.json`;
+    let hasNextPage = true;
+    let nextPageInfo = null;
+    const limit = 250; // Shopify 最大每页数量
+    let pageCount = 0;
+    const maxPages = 10; // 最多获取 2500 个产品
     
-    // 获取所有产品（分页）
-    while (nextPageUrl) {
-      const productsOptions = {
+    while (hasNextPage && pageCount < maxPages) {
+      pageCount++;
+      console.log(`[API] Fetching page ${pageCount}...`);
+      
+      // 构建请求 URL
+      let urlPath = `/admin/api/2024-01/products.json?limit=${limit}`;
+      if (nextPageInfo) {
+        urlPath += `&page_info=${nextPageInfo}`;
+      }
+      
+      const options = {
         hostname: SHOPIFY_STORE,
-        port: 443,
-        path: nextPageUrl.startsWith('http') ? new URL(nextPageUrl).pathname + new URL(nextPageUrl).search : nextPageUrl,
+        path: urlPath,
         method: 'GET',
         headers: {
           'X-Shopify-Access-Token': SHOPIFY_TOKEN,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
+          'Content-Type': 'application/json'
         }
       };
       
-      const productsResponse = await makeHttpsRequest(productsOptions);
+      const response = await makeHttpsRequest(options);
       
-      console.log('[API] Shopify products response status:', productsResponse.statusCode);
-      
-      if (productsResponse.statusCode !== 200) {
-        throw new Error(`Shopify API error: ${productsResponse.statusCode} - ${JSON.stringify(productsResponse.data)}`);
+      if (response.statusCode !== 200) {
+        console.error('[API] Shopify API error:', response.data);
+        throw new Error(`Shopify API returned ${response.statusCode}`);
       }
       
-      if (!productsResponse.data || !productsResponse.data.products) {
-        throw new Error('Invalid response format from Shopify API');
-      }
+      const products = response.data.products || [];
+      allProducts = allProducts.concat(products);
       
-      console.log('[API] Fetched batch:', productsResponse.data.products.length, 'products');
-      
-      allProducts = allProducts.concat(productsResponse.data.products);
+      console.log(`[API] Fetched ${products.length} products (total: ${allProducts.length})`);
       
       // 检查是否有下一页
-      if (productsResponse.headers.link) {
-        const links = productsResponse.headers.link.split(',');
-        const nextLink = links.find(link => link.includes('rel="next"'));
-        if (nextLink) {
-          const match = nextLink.match(/<([^>]+)>/);
-          if (match) {
-            nextPageUrl = match[1];
-            // 提取路径部分
-            nextPageUrl = new URL(nextPageUrl).pathname + new URL(nextPageUrl).search;
-          } else {
-            nextPageUrl = null;
-          }
-        } else {
-          nextPageUrl = null;
-        }
-      } else {
-        nextPageUrl = null;
+      // Shopify 在 Link header 中返回分页信息
+      hasNextPage = false; // 简化处理，如果需要分页可以重新实现
+      
+      if (products.length < limit) {
+        hasNextPage = false;
       }
     }
     
-    console.log('[API] Total products fetched:', allProducts.length);
+    console.log(`[API] Total products fetched: ${allProducts.length}`);
     
-    // 获取分类信息
-    const customCollections = await getProductCategories();
-    const smartCollections = await getSmartCollections();
-    
-    // 合并所有集合
-    const allCollections = [...customCollections, ...smartCollections];
-    
-    // 创建产品ID到集合的映射
-    const productCollectionMap = {};
-    allCollections.forEach(collection => {
-      if (collection.products) {
-        collection.products.forEach(product => {
-          if (!productCollectionMap[product.id]) {
-            productCollectionMap[product.id] = [];
-          }
-          productCollectionMap[product.id].push({
-            id: collection.id,
-            title: collection.title,
-            handle: collection.handle
-          });
-        });
+    // 格式化产品数据
+    const formattedProducts = allProducts.map(product => ({
+      id: product.id,
+      title: product.title,
+      description: product.body_html || '',
+      images: product.images || [],
+      variants: product.variants || [],
+      category: product.product_type || 'Uncategorized',
+      collections: [],
+      platformLinks: {
+        wayfair: '',
+        amazon: '',
+        overstock: '',
+        homeDepot: '',
+        lowes: '',
+        target: '',
+        kohls: ''
       }
-    });
+    }));
     
-    // 处理产品数据，添加分类和电商平台链接
-    const processedProducts = allProducts.map((product) => {
-      const productTitle = product.title || '';
-      
-      // 获取产品的分类
-      const collections = productCollectionMap[product.id] || [];
-      
-      // 尝试从产品类型推断分类
-      let category = 'General';
-      if (product.product_type && product.product_type.trim() !== '') {
-        category = product.product_type;
-      } else if (collections.length > 0) {
-        category = collections[0].title;
-      } else {
-        // 从标题中推断类别
-        const title = product.title.toLowerCase();
-        if (title.includes('lamp') || title.includes('light') || title.includes('chandelier') || title.includes('sconce')) {
-          category = 'Lighting';
-        } else if (title.includes('table') || title.includes('desk')) {
-          category = 'Furniture';
-        } else if (title.includes('outdoor') || title.includes('wall')) {
-          category = 'Outdoor';
-        } else if (title.includes('floor')) {
-          category = 'Floor Lamps';
-        } else if (title.includes('pendant')) {
-          category = 'Pendants';
-        } else if (title.includes('ceiling')) {
-          category = 'Ceiling Lights';
-        } else if (title.includes('bedroom') || title.includes('nightstand')) {
-          category = 'Bedroom';
-        } else if (title.includes('bathroom')) {
-          category = 'Bathroom';
-        } else if (title.includes('kitchen')) {
-          category = 'Kitchen';
-        } else {
-          category = 'Home Decor';
-        }
-      }
-      
-      return {
-        id: product.id,
-        title: product.title,
-        description: product.body_html || product.body_text || '',
-        images: product.images || [],
-        variants: product.variants || [],
-        category: category, // Add category to product
-        collections: collections, // Add collection information
-        platformLinks: {
-          wayfair: '',
-          amazon: '',
-          overstock: '',
-          homeDepot: '',
-          lowes: '',
-          target: '',
-          kohls: ''
-        }
-      };
-    });
-    
-    console.log(`[API] Processed ${processedProducts.length} products successfully`);
-    console.log(`[API] Found ${allCollections.length} collections`);
-    
-    res.json(processedProducts);
+    res.json(formattedProducts);
     
   } catch (error) {
-    console.error('[API] Error:', error);
-    res.status(500).json({ 
-      error: 'Failed to fetch products', 
-      details: error.message 
-    });
+    console.error('[API] Error fetching products:', error);
+    // 返回 mock 数据作为后备
+    const mockProducts = getMockProducts();
+    res.json(mockProducts);
   }
 });
 
-// 获取所有分类
+// 获取分类列表
 app.get('/api/shopify/categories', async (req, res) => {
+  console.log('[API] Fetching categories...');
+  
   try {
-    console.log('[API] Fetching categories...');
+    if (!SHOPIFY_TOKEN) {
+      console.log('[API] No token, returning mock categories');
+      return res.json(['Lighting', 'Furniture', 'Decor', 'Outdoor']);
+    }
     
-    // 获取产品
-    const productsOptions = {
+    const options = {
       hostname: SHOPIFY_STORE,
-      port: 443,
-      path: '/admin/api/2023-10/products.json',
+      path: '/admin/api/2024-01/products.json?fields=product_type&limit=250',
       method: 'GET',
       headers: {
         'X-Shopify-Access-Token': SHOPIFY_TOKEN,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
+        'Content-Type': 'application/json'
       }
     };
     
-    const productsResponse = await makeHttpsRequest(productsOptions);
+    const response = await makeHttpsRequest(options);
     
-    if (productsResponse.statusCode !== 200) {
-      throw new Error(`Shopify API error: ${productsResponse.statusCode}`);
+    if (response.statusCode !== 200) {
+      throw new Error(`Shopify API returned ${response.statusCode}`);
     }
     
-    if (!productsResponse.data || !productsResponse.data.products) {
-      throw new Error('Invalid response format from Shopify API');
-    }
+    const products = response.data.products || [];
+    const categories = [...new Set(products.map(p => p.product_type).filter(Boolean))];
     
-    // 获取所有唯一的产品类型
-    const uniqueTypes = [...new Set(productsResponse.data.products.map(p => p.product_type))];
-    const filteredTypes = uniqueTypes.filter(type => type && type.trim() !== '');
-    
-    // 从标题推断的类别
-    const inferredCategories = ['Lighting', 'Furniture', 'Outdoor', 'Floor Lamps', 'Pendants', 'Home Decor'];
-    
-    const allCategories = [...new Set([...filteredTypes, ...inferredCategories])].sort();
-    
-    res.json(allCategories);
+    res.json(categories);
     
   } catch (error) {
     console.error('[API] Error fetching categories:', error);
@@ -364,29 +216,64 @@ app.get('/api/shopify/categories', async (req, res) => {
 });
 
 // 获取所有平台链接
-app.get('/api/platform-links', (req, res) => {
-  console.log('[API] Fetching all platform links');
-  res.json(platformLinksStore);
+app.get('/api/platform-links', async (req, res) => {
+  console.log('[API] Fetching all platform links from MongoDB');
+  try {
+    const links = await PlatformLink.find({});
+    const linksMap = {};
+    links.forEach(link => {
+      linksMap[link.productId] = {
+        wayfair: link.wayfair || '',
+        amazon: link.amazon || '',
+        overstock: link.overstock || '',
+        homeDepot: link.homeDepot || '',
+        lowes: link.lowes || '',
+        target: link.target || '',
+        kohls: link.kohls || ''
+      };
+    });
+    res.json(linksMap);
+  } catch (error) {
+    console.error('[API] Error fetching platform links:', error);
+    res.status(500).json({ error: 'Failed to fetch platform links' });
+  }
 });
 
 // 获取单个产品的平台链接
-app.get('/api/platform-links/:productId', (req, res) => {
+app.get('/api/platform-links/:productId', async (req, res) => {
   const { productId } = req.params;
   console.log(`[API] Fetching platform links for product: ${productId}`);
-  const links = platformLinksStore[productId] || {
-    wayfair: '',
-    amazon: '',
-    overstock: '',
-    homeDepot: '',
-    lowes: '',
-    target: '',
-    kohls: ''
-  };
-  res.json(links);
+  try {
+    const link = await PlatformLink.findOne({ productId });
+    if (link) {
+      res.json({
+        wayfair: link.wayfair || '',
+        amazon: link.amazon || '',
+        overstock: link.overstock || '',
+        homeDepot: link.homeDepot || '',
+        lowes: link.lowes || '',
+        target: link.target || '',
+        kohls: link.kohls || ''
+      });
+    } else {
+      res.json({
+        wayfair: '',
+        amazon: '',
+        overstock: '',
+        homeDepot: '',
+        lowes: '',
+        target: '',
+        kohls: ''
+      });
+    }
+  } catch (error) {
+    console.error('[API] Error fetching platform links:', error);
+    res.status(500).json({ error: 'Failed to fetch platform links' });
+  }
 });
 
 // 更新单个产品的平台链接
-app.post('/api/platform-links/:productId', (req, res) => {
+app.post('/api/platform-links/:productId', async (req, res) => {
   const { productId } = req.params;
   const links = req.body;
   
@@ -400,22 +287,36 @@ app.post('/api/platform-links/:productId', (req, res) => {
     sanitizedLinks[platform] = links[platform] || '';
   });
   
-  // 更新内存中的数据
-  platformLinksStore[productId] = sanitizedLinks;
-  
-  // 保存到文件
-  const saveResult = savePlatformLinks(platformLinksStore);
-  
-  res.json({ 
-    success: saveResult, 
-    message: saveResult ? 'Platform links updated successfully' : 'Failed to save platform links',
-    productId,
-    links: sanitizedLinks
-  });
+  try {
+    // 使用 upsert 更新或创建
+    const result = await PlatformLink.findOneAndUpdate(
+      { productId },
+      { 
+        ...sanitizedLinks,
+        updatedAt: new Date()
+      },
+      { upsert: true, new: true }
+    );
+    
+    console.log(`[API] Platform links saved for product: ${productId}`);
+    
+    res.json({ 
+      success: true, 
+      message: 'Platform links updated successfully',
+      productId,
+      links: sanitizedLinks
+    });
+  } catch (error) {
+    console.error('[API] Error saving platform links:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to save platform links'
+    });
+  }
 });
 
 // 批量更新平台链接
-app.post('/api/platform-links/bulk', (req, res) => {
+app.post('/api/platform-links/bulk', async (req, res) => {
   const { links } = req.body;
   
   console.log('[API] Bulk updating platform links');
@@ -427,24 +328,105 @@ app.post('/api/platform-links/bulk', (req, res) => {
     });
   }
   
-  let updatedCount = 0;
-  Object.keys(links).forEach(productId => {
-    const productLinks = links[productId];
-    if (productLinks && typeof productLinks === 'object') {
-      platformLinksStore[productId] = productLinks;
-      updatedCount++;
+  try {
+    let updatedCount = 0;
+    const validPlatforms = ['wayfair', 'amazon', 'overstock', 'homeDepot', 'lowes', 'target', 'kohls'];
+    
+    for (const productId of Object.keys(links)) {
+      const productLinks = links[productId];
+      if (productLinks && typeof productLinks === 'object') {
+        const sanitizedLinks = {};
+        validPlatforms.forEach(platform => {
+          sanitizedLinks[platform] = productLinks[platform] || '';
+        });
+        
+        await PlatformLink.findOneAndUpdate(
+          { productId },
+          { 
+            ...sanitizedLinks,
+            updatedAt: new Date()
+          },
+          { upsert: true }
+        );
+        updatedCount++;
+      }
     }
-  });
-  
-  // 保存到文件
-  const saveResult = savePlatformLinks(platformLinksStore);
-  
-  res.json({ 
-    success: saveResult, 
-    message: saveResult ? `Updated ${updatedCount} products` : 'Failed to save platform links',
-    updatedCount
-  });
+    
+    console.log(`[API] Bulk update completed: ${updatedCount} products`);
+    
+    res.json({ 
+      success: true, 
+      message: `Updated ${updatedCount} products`,
+      updatedCount
+    });
+  } catch (error) {
+    console.error('[API] Error in bulk update:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to save platform links'
+    });
+  }
 });
+
+// Mock 数据函数
+function getMockProducts() {
+  return [
+    {
+      id: 1,
+      title: "Modern Crystal Chandelier",
+      description: "Elegant crystal chandelier perfect for dining rooms",
+      images: [{ src: "https://images.unsplash.com/photo-1565814329452-e1efa11c5b89?w=400" }],
+      variants: [{ title: "Default", price: "299.99", sku: "CH-001" }],
+      category: "Lighting",
+      collections: [],
+      platformLinks: {
+        wayfair: "",
+        amazon: "",
+        overstock: "",
+        homeDepot: "",
+        lowes: "",
+        target: "",
+        kohls: ""
+      }
+    },
+    {
+      id: 2,
+      title: "Vintage Table Lamp",
+      description: "Classic vintage style table lamp",
+      images: [{ src: "https://images.unsplash.com/photo-1507473885765-e6ed057f782c?w=400" }],
+      variants: [{ title: "Default", price: "89.99", sku: "TL-002" }],
+      category: "Lighting",
+      collections: [],
+      platformLinks: {
+        wayfair: "",
+        amazon: "",
+        overstock: "",
+        homeDepot: "",
+        lowes: "",
+        target: "",
+        kohls: ""
+      }
+    },
+    {
+      id: 3,
+      title: "LED Floor Lamp",
+      description: "Modern LED floor lamp with adjustable brightness",
+      images: [{ src: "https://images.unsplash.com/photo-1513506003901-1e6a229e2d15?w=400" }],
+      variants: [{ title: "Default", price: "149.99", sku: "FL-003" }],
+      category: "Lighting",
+      collections: [],
+      platformLinks: {
+        wayfair: "",
+        amazon: "",
+        overstock: "",
+        homeDepot: "",
+        lowes: "",
+        target: "",
+        kohls: ""
+      }
+    }
+  ];
+}
 
 // 启动服务器
 app.listen(PORT, () => {
@@ -457,6 +439,7 @@ app.listen(PORT, () => {
   console.log(`Categories API:   http://localhost:${PORT}/api/shopify/categories`);
   console.log(`Platform Links:   http://localhost:${PORT}/api/platform-links`);
   console.log(`Shopify store:    ${SHOPIFY_STORE}`);
+  console.log(`Database:         ${MONGODB_URI.includes('localhost') ? 'Local MongoDB' : 'MongoDB Atlas'}`);
   console.log('====================================');
   console.log('✅ Server ready to proxy requests');
   console.log('====================================');

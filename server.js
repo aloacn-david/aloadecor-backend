@@ -147,7 +147,7 @@ app.get('/api/shopify/products', async (req, res) => {
     
     // 格式化产品数据
     const formattedProducts = allProducts.map(product => ({
-      id: product.id,
+      id: String(product.id),
       title: product.title,
       description: product.body_html || '',
       images: product.images || [],
@@ -372,7 +372,7 @@ app.post('/api/platform-links/bulk', async (req, res) => {
 function getMockProducts() {
   return [
     {
-      id: 1,
+      id: "1",
       title: "Modern Crystal Chandelier",
       description: "Elegant crystal chandelier perfect for dining rooms",
       images: [{ src: "https://images.unsplash.com/photo-1565814329452-e1efa11c5b89?w=400" }],
@@ -390,7 +390,7 @@ function getMockProducts() {
       }
     },
     {
-      id: 2,
+      id: "2",
       title: "Vintage Table Lamp",
       description: "Classic vintage style table lamp",
       images: [{ src: "https://images.unsplash.com/photo-1507473885765-e6ed057f782c?w=400" }],
@@ -408,7 +408,7 @@ function getMockProducts() {
       }
     },
     {
-      id: 3,
+      id: "3",
       title: "LED Floor Lamp",
       description: "Modern LED floor lamp with adjustable brightness",
       images: [{ src: "https://images.unsplash.com/photo-1513506003901-1e6a229e2d15?w=400" }],

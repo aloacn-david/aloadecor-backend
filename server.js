@@ -16,13 +16,30 @@ app.use(cors());
 app.use(express.json());
 
 // 连接 MongoDB
-mongoose.connect(MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-}).then(() => {
-  console.log('[Database] Connected to MongoDB');
-}).catch(err => {
-  console.error('[Database] MongoDB connection error:', err);
+console.log('[Database] Attempting to connect to MongoDB...');
+console.log('[Database] Connection string (masked):', MONGODB_URI.replace(/:([^@]+)@/, ':****@'));
+
+mongoose.connect(MONGODB_URI)
+  .then(() => {
+    console.log('[Database] ✅ Connected to MongoDB successfully');
+  })
+  .catch(err => {
+    console.error('[Database] ❌ MongoDB connection error:', err.message);
+    console.error('[Database] Error code:', err.code);
+    console.error('[Database] Error name:', err.name);
+  });
+
+// 监听连接事件
+mongoose.connection.on('connected', () => {
+  console.log('[Database] Mongoose connected to MongoDB');
+});
+
+mongoose.connection.on('error', (err) => {
+  console.error('[Database] Mongoose connection error:', err.message);
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.log('[Database] Mongoose disconnected from MongoDB');
 });
 
 // 定义平台链接 Schema

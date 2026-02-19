@@ -325,6 +325,89 @@ app.get('/api/shopify/categories', async (req, res) => {
   }
 });
 
+// 内存存储平台链接数据（生产环境建议使用数据库）
+const platformLinksStore = new Map();
+
+// 获取所有平台链接
+app.get('/api/platform-links', (req, res) => {
+  console.log('[API] Fetching all platform links');
+  const links = {};
+  platformLinksStore.forEach((value, key) => {
+    links[key] = value;
+  });
+  res.json(links);
+});
+
+// 获取单个产品的平台链接
+app.get('/api/platform-links/:productId', (req, res) => {
+  const { productId } = req.params;
+  console.log(`[API] Fetching platform links for product: ${productId}`);
+  const links = platformLinksStore.get(productId) || {
+    wayfair: '',
+    amazon: '',
+    overstock: '',
+    homeDepot: '',
+    lowes: '',
+    target: '',
+    kohls: ''
+  };
+  res.json(links);
+});
+
+// 更新单个产品的平台链接
+app.post('/api/platform-links/:productId', (req, res) => {
+  const { productId } = req.params;
+  const links = req.body;
+  
+  console.log(`[API] Updating platform links for product: ${productId}`, links);
+  
+  // 验证链接数据
+  const validPlatforms = ['wayfair', 'amazon', 'overstock', 'homeDepot', 'lowes', 'target', 'kohls'];
+  const sanitizedLinks = {};
+  
+  validPlatforms.forEach(platform => {
+    sanitizedLinks[platform] = links[platform] || '';
+  });
+  
+  platformLinksStore.set(productId, sanitizedLinks);
+  
+  res.json({ 
+    success: true, 
+    message: 'Platform links updated successfully',
+    productId,
+    links: sanitizedLinks
+  });
+});
+
+// 批量更新平台链接
+app.post('/api/platform-links/bulk', (req, res) => {
+  const { links } = req.body;
+  
+  console.log('[API] Bulk updating platform links');
+  
+  if (!links || typeof links !== 'object') {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Invalid data format' 
+    });
+  }
+  
+  let updatedCount = 0;
+  Object.keys(links).forEach(productId => {
+    const productLinks = links[productId];
+    if (productLinks && typeof productLinks === 'object') {
+      platformLinksStore.set(productId, productLinks);
+      updatedCount++;
+    }
+  });
+  
+  res.json({ 
+    success: true, 
+    message: `Updated ${updatedCount} products`,
+    updatedCount
+  });
+});
+
 // 启动服务器
 app.listen(PORT, () => {
   console.log('====================================');
@@ -334,6 +417,7 @@ app.listen(PORT, () => {
   console.log(`Health check:     http://localhost:${PORT}/health`);
   console.log(`Products API:     http://localhost:${PORT}/api/shopify/products`);
   console.log(`Categories API:   http://localhost:${PORT}/api/shopify/categories`);
+  console.log(`Platform Links:   http://localhost:${PORT}/api/platform-links`);
   console.log(`Shopify store:    ${SHOPIFY_STORE}`);
   console.log('====================================');
   console.log('✅ Server ready to proxy requests');

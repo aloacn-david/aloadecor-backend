@@ -246,12 +246,18 @@ app.get('/api/platform-links', async (req, res) => {
     const linksMap = {};
     links.forEach(link => {
       linksMap[link.productId] = {
-        wayfair: link.wayfair || '',
-        amazon: link.amazon || '',
-        overstock: link.overstock || '',
-        homeDepot: link.homeDepot || '',
+        amazon1: link.amazon1 || '',
+        amazon2: link.amazon2 || '',
+        wf1: link.wf1 || '',
+        wf2: link.wf2 || '',
+        os1: link.os1 || '',
+        os2: link.os2 || '',
+        hd1: link.hd1 || '',
+        hd2: link.hd2 || '',
         lowes: link.lowes || '',
         target: link.target || '',
+        walmart: link.walmart || '',
+        ebay: link.ebay || '',
         kohls: link.kohls || ''
       };
     });
@@ -270,22 +276,34 @@ app.get('/api/platform-links/:productId', async (req, res) => {
     const link = await PlatformLink.findOne({ productId });
     if (link) {
       res.json({
-        wayfair: link.wayfair || '',
-        amazon: link.amazon || '',
-        overstock: link.overstock || '',
-        homeDepot: link.homeDepot || '',
+        amazon1: link.amazon1 || '',
+        amazon2: link.amazon2 || '',
+        wf1: link.wf1 || '',
+        wf2: link.wf2 || '',
+        os1: link.os1 || '',
+        os2: link.os2 || '',
+        hd1: link.hd1 || '',
+        hd2: link.hd2 || '',
         lowes: link.lowes || '',
         target: link.target || '',
+        walmart: link.walmart || '',
+        ebay: link.ebay || '',
         kohls: link.kohls || ''
       });
     } else {
       res.json({
-        wayfair: '',
-        amazon: '',
-        overstock: '',
-        homeDepot: '',
+        amazon1: '',
+        amazon2: '',
+        wf1: '',
+        wf2: '',
+        os1: '',
+        os2: '',
+        hd1: '',
+        hd2: '',
         lowes: '',
         target: '',
+        walmart: '',
+        ebay: '',
         kohls: ''
       });
     }

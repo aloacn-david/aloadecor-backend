@@ -168,6 +168,27 @@ app.get('/api/shopify/products', async (req, res) => {
     
     console.log(`[API] Total products fetched: ${allProducts.length}`);
     
+    // 获取所有平台链接数据
+    const platformLinksData = await PlatformLink.find({});
+    const linksMap = {};
+    platformLinksData.forEach(link => {
+      linksMap[link.productId] = {
+        amazon1: link.amazon1 || '',
+        amazon2: link.amazon2 || '',
+        wf1: link.wf1 || '',
+        wf2: link.wf2 || '',
+        os1: link.os1 || '',
+        os2: link.os2 || '',
+        hd1: link.hd1 || '',
+        hd2: link.hd2 || '',
+        lowes: link.lowes || '',
+        target: link.target || '',
+        walmart: link.walmart || '',
+        ebay: link.ebay || '',
+        kohls: link.kohls || ''
+      };
+    });
+    
     // 格式化产品数据
     const formattedProducts = allProducts.map(product => ({
       id: String(product.id),
@@ -177,13 +198,19 @@ app.get('/api/shopify/products', async (req, res) => {
       variants: product.variants || [],
       category: product.product_type || 'Uncategorized',
       collections: [],
-      platformLinks: {
-        wayfair: '',
-        amazon: '',
-        overstock: '',
-        homeDepot: '',
+      platformLinks: linksMap[String(product.id)] || {
+        amazon1: '',
+        amazon2: '',
+        wf1: '',
+        wf2: '',
+        os1: '',
+        os2: '',
+        hd1: '',
+        hd2: '',
         lowes: '',
         target: '',
+        walmart: '',
+        ebay: '',
         kohls: ''
       }
     }));

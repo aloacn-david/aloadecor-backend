@@ -45,12 +45,18 @@ mongoose.connection.on('disconnected', () => {
 // 定义平台链接 Schema
 const platformLinkSchema = new mongoose.Schema({
   productId: { type: String, required: true, unique: true },
-  wayfair: { type: String, default: '' },
-  amazon: { type: String, default: '' },
-  overstock: { type: String, default: '' },
-  homeDepot: { type: String, default: '' },
+  amazon1: { type: String, default: '' },
+  amazon2: { type: String, default: '' },
+  wf1: { type: String, default: '' },
+  wf2: { type: String, default: '' },
+  os1: { type: String, default: '' },
+  os2: { type: String, default: '' },
+  hd1: { type: String, default: '' },
+  hd2: { type: String, default: '' },
   lowes: { type: String, default: '' },
   target: { type: String, default: '' },
+  walmart: { type: String, default: '' },
+  ebay: { type: String, default: '' },
   kohls: { type: String, default: '' },
   updatedAt: { type: Date, default: Date.now }
 });
@@ -297,7 +303,7 @@ app.post('/api/platform-links/:productId', async (req, res) => {
   console.log(`[API] Updating platform links for product: ${productId}`, links);
   
   // 验证链接数据
-  const validPlatforms = ['wayfair', 'amazon', 'overstock', 'homeDepot', 'lowes', 'target', 'kohls'];
+  const validPlatforms = ['amazon1', 'amazon2', 'wf1', 'wf2', 'os1', 'os2', 'hd1', 'hd2', 'lowes', 'target', 'walmart', 'ebay', 'kohls'];
   const sanitizedLinks = {};
   
   validPlatforms.forEach(platform => {
@@ -347,8 +353,8 @@ app.post('/api/platform-links/bulk', async (req, res) => {
   
   try {
     let updatedCount = 0;
-    const validPlatforms = ['wayfair', 'amazon', 'overstock', 'homeDepot', 'lowes', 'target', 'kohls'];
-    
+    const validPlatforms = ['amazon1', 'amazon2', 'wf1', 'wf2', 'os1', 'os2', 'hd1', 'hd2', 'lowes', 'target', 'walmart', 'ebay', 'kohls'];
+
     for (const productId of Object.keys(links)) {
       const productLinks = links[productId];
       if (productLinks && typeof productLinks === 'object') {

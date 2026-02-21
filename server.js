@@ -356,7 +356,6 @@ app.post('/api/platform-links/:productId', async (req, res) => {
   });
   
   try {
-    // 使用 upsert 更新或创建
     const result = await PlatformLink.findOneAndUpdate(
       { productId },
       { 
@@ -366,19 +365,25 @@ app.post('/api/platform-links/:productId', async (req, res) => {
       { upsert: true, new: true }
     );
     
-    console.log(`[API] Platform links saved for product: ${productId}`);
+    const linksCount = Object.values(sanitizedLinks).filter(link => link !== '').length;
+    
+    console.log(`[API] Platform links saved for product: ${productId}, ${linksCount} links`);
     
     res.json({ 
       success: true, 
-      message: 'Platform links updated successfully',
+      message: '平台链接已成功保存到数据库',
       productId,
-      links: sanitizedLinks
+      links: sanitizedLinks,
+      linksCount,
+      savedAt: result.updatedAt,
+      isNew: result.createdAt.getTime() === result.updatedAt.getTime()
     });
   } catch (error) {
     console.error('[API] Error saving platform links:', error);
     res.status(500).json({ 
       success: false, 
-      error: 'Failed to save platform links'
+      error: '保存失败：' + error.message,
+      productId
     });
   }
 });
@@ -424,14 +429,17 @@ app.post('/api/platform-links/bulk', async (req, res) => {
     
     res.json({ 
       success: true, 
-      message: `Updated ${updatedCount} products`,
-      updatedCount
+      message: `已成功保存 ${updatedCount} 个产品的平台链接到数据库`,
+      updatedCount,
+      totalProducts: Object.keys(links).length,
+      savedAt: new Date()
     });
   } catch (error) {
     console.error('[API] Error in bulk update:', error);
     res.status(500).json({ 
       success: false, 
-      error: 'Failed to save platform links'
+      error: '批量保存失败：' + error.message,
+      updatedCount: 0
     });
   }
 });

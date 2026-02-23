@@ -376,7 +376,7 @@ app.post('/api/platform-links/:productId', async (req, res) => {
       links: sanitizedLinks,
       linksCount,
       savedAt: result.updatedAt,
-      isNew: result.createdAt.getTime() === result.updatedAt.getTime()
+      isNew: result.createdAt ? result.createdAt.getTime() === result.updatedAt.getTime() : true
     });
   } catch (error) {
     console.error('[API] Error saving platform links:', error);

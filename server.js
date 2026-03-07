@@ -295,6 +295,62 @@ app.get('/api/platform-links', async (req, res) => {
   }
 });
 
+// 批量更新平台链接
+app.post('/api/platform-links/bulk', async (req, res) => {
+  const { links } = req.body;
+  
+  console.log('[API] Bulk updating platform links');
+  
+  if (!links || typeof links !== 'object') {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Invalid data format' 
+    });
+  }
+  
+  try {
+    let updatedCount = 0;
+    const validPlatforms = ['amazon1', 'amazon2', 'wf1', 'wf2', 'os1', 'os2', 'hd1', 'hd2', 'lowes', 'target', 'walmart', 'ebay', 'kohls'];
+
+    for (const productId of Object.keys(links)) {
+      const productLinks = links[productId];
+      if (productLinks && typeof productLinks === 'object') {
+        const sanitizedLinks = {};
+        validPlatforms.forEach(platform => {
+          sanitizedLinks[platform] = productLinks[platform] || '';
+        });
+        
+        await PlatformLink.findOneAndUpdate(
+          { productId },
+          { 
+            ...sanitizedLinks,
+            updatedAt: new Date()
+          },
+          { upsert: true }
+        );
+        updatedCount++;
+      }
+    }
+    
+    console.log(`[API] Bulk update completed: ${updatedCount} products`);
+    
+    res.json({ 
+      success: true, 
+      message: `已成功保存 ${updatedCount} 个产品的平台链接到数据库`,
+      updatedCount,
+      totalProducts: Object.keys(links).length,
+      savedAt: new Date()
+    });
+  } catch (error) {
+    console.error('[API] Error in bulk update:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: '批量保存失败：' + error.message,
+      updatedCount: 0
+    });
+  }
+});
+
 // 获取单个产品的平台链接
 app.get('/api/platform-links/:productId', async (req, res) => {
   const { productId } = req.params;
@@ -384,62 +440,6 @@ app.post('/api/platform-links/:productId', async (req, res) => {
       success: false, 
       error: '保存失败：' + error.message,
       productId
-    });
-  }
-});
-
-// 批量更新平台链接
-app.post('/api/platform-links/bulk', async (req, res) => {
-  const { links } = req.body;
-  
-  console.log('[API] Bulk updating platform links');
-  
-  if (!links || typeof links !== 'object') {
-    return res.status(400).json({ 
-      success: false, 
-      error: 'Invalid data format' 
-    });
-  }
-  
-  try {
-    let updatedCount = 0;
-    const validPlatforms = ['amazon1', 'amazon2', 'wf1', 'wf2', 'os1', 'os2', 'hd1', 'hd2', 'lowes', 'target', 'walmart', 'ebay', 'kohls'];
-
-    for (const productId of Object.keys(links)) {
-      const productLinks = links[productId];
-      if (productLinks && typeof productLinks === 'object') {
-        const sanitizedLinks = {};
-        validPlatforms.forEach(platform => {
-          sanitizedLinks[platform] = productLinks[platform] || '';
-        });
-        
-        await PlatformLink.findOneAndUpdate(
-          { productId },
-          { 
-            ...sanitizedLinks,
-            updatedAt: new Date()
-          },
-          { upsert: true }
-        );
-        updatedCount++;
-      }
-    }
-    
-    console.log(`[API] Bulk update completed: ${updatedCount} products`);
-    
-    res.json({ 
-      success: true, 
-      message: `已成功保存 ${updatedCount} 个产品的平台链接到数据库`,
-      updatedCount,
-      totalProducts: Object.keys(links).length,
-      savedAt: new Date()
-    });
-  } catch (error) {
-    console.error('[API] Error in bulk update:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: '批量保存失败：' + error.message,
-      updatedCount: 0
     });
   }
 });

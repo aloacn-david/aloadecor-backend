@@ -9,7 +9,7 @@ const PORT = process.env.PORT || 8080;
 // 从环境变量读取配置
 const SHOPIFY_STORE = process.env.SHOPIFY_STORE || 'goldianlightandliving.myshopify.com';
 const SHOPIFY_TOKEN = process.env.SHOPIFY_TOKEN || '';
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/aloadecor';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://aloadecor:Gaodian%2A123@cluster0.7flrfmg.mongodb.net/aloadecor?retryWrites=true&w=majority';
 
 // 启用 CORS
 app.use(cors());

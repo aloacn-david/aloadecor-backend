@@ -1,0 +1,86 @@
+"""
+平台链接服务
+"""
+from typing import List, Optional, Dict, Any
+from datetime import datetime
+from ..db.mongodb import get_collection
+from ..models.shopify import PlatformLinks, PlatformLinksUpdate
+
+
+class PlatformLinksService:
+    """平台链接管理服务"""
+    
+    def __init__(self):
+        self.collection = get_collection("platform_links")
+    
+    async def get_all_platform_links(self) -> List[Dict[str, Any]]:
+        """获取所有产品的平台链接"""
+        if not self.collection:
+            return []
+        
+        cursor = self.collection.find().sort("updated_at", -1)
+        results = await cursor.to_list(length=None)
+        
+        return results
+    
+    async def get_platform_links(self, product_id: str) -> Optional[Dict[str, Any]]:
+        """获取单个产品的平台链接"""
+        if not self.collection:
+            return None
+        
+        result = await self.collection.find_one({"product_id": product_id})
+        return result
+    
+    async def update_platform_links(
+        self,
+        product_id: str,
+        updates: PlatformLinksUpdate
+    ) -> Dict[str, Any]:
+        """更新产品平台链接"""
+        if not self.collection:
+            raise Exception("Database not connected")
+        
+        existing = await self.get_platform_links(product_id)
+        
+        update_data = updates.dict(exclude_unset=True)
+        update_data["updated_at"] = datetime.now()
+        
+        if existing:
+            await self.collection.update_one(
+                {"product_id": product_id},
+                {"$set": update_data}
+            )
+        else:
+            update_data["product_id"] = product_id
+            update_data["created_at"] = datetime.now()
+            await self.collection.insert_one(update_data)
+        
+        return await self.get_platform_links(product_id)
+    
+    async def batch_update_platform_links(
+        self,
+        updates: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """批量更新平台链接"""
+        results = []
+        
+        for item in updates:
+            product_id = str(item.get("product_id"))
+            if not product_id:
+                continue
+            
+            update_data = {k: v for k, v in item.items() if k != "product_id"}
+            update_obj = PlatformLinksUpdate(**update_data)
+            
+            result = await self.update_platform_links(product_id, update_obj)
+            results.append(result)
+        
+        return results
+    
+    async def delete_platform_links(self, product_id: str) -> bool:
+        """删除产品平台链接"""
+        if not self.collection:
+            return False
+        
+        result = await self.collection.delete_one({"product_id": product_id})
+        return result.deleted_count > 0

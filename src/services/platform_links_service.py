@@ -3,7 +3,7 @@
 """
 from typing import List, Optional, Dict, Any
 from datetime import datetime
-from ..db.mongodb import get_collection
+from ..db.mongodb import get_collection, connect_to_mongo
 from ..models.shopify import PlatformLinks, PlatformLinksUpdate
 
 
@@ -13,8 +13,15 @@ class PlatformLinksService:
     def __init__(self):
         self.collection = get_collection("platform_links")
     
+    async def _ensure_connection(self):
+        """确保MongoDB连接已建立"""
+        if self.collection is None:
+            await connect_to_mongo()
+            self.collection = get_collection("platform_links")
+    
     async def get_all_platform_links(self) -> List[Dict[str, Any]]:
         """获取所有产品的平台链接"""
+        await self._ensure_connection()
         if not self.collection:
             return []
         
@@ -25,6 +32,7 @@ class PlatformLinksService:
     
     async def get_platform_links(self, product_id: str) -> Optional[Dict[str, Any]]:
         """获取单个产品的平台链接"""
+        await self._ensure_connection()
         if not self.collection:
             return None
         
@@ -37,6 +45,7 @@ class PlatformLinksService:
         updates: PlatformLinksUpdate
     ) -> Dict[str, Any]:
         """更新产品平台链接"""
+        await self._ensure_connection()
         if not self.collection:
             raise Exception("Database not connected")
         
@@ -82,6 +91,7 @@ class PlatformLinksService:
     
     async def delete_platform_links(self, product_id: str) -> bool:
         """删除产品平台链接"""
+        await self._ensure_connection()
         if not self.collection:
             return False
         

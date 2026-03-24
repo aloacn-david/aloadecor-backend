@@ -157,6 +157,23 @@ async def get_shopify_products():
                         "ebay": links.get("ebay", ""),
                         "kohls": links.get("kohls", "")
                     }
+                else:
+                    # 没有链接时保持空对象
+                    transformed["platformLinks"] = {
+                        "amazon1": "",
+                        "amazon2": "",
+                        "wf1": "",
+                        "wf2": "",
+                        "os1": "",
+                        "os2": "",
+                        "hd1": "",
+                        "hd2": "",
+                        "lowes": "",
+                        "target": "",
+                        "walmart": "",
+                        "ebay": "",
+                        "kohls": ""
+                    }
                 
                 result.append(transformed)
             
@@ -238,15 +255,60 @@ async def get_all_platform_links():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def format_platform_links_response(links_data, product_id):
+    """格式化平台链接返回结构，统一返回格式"""
+    if not links_data:
+        return {
+            "product_id": product_id,
+            "platformLinks": {
+                "amazon1": "",
+                "amazon2": "",
+                "wf1": "",
+                "wf2": "",
+                "os1": "",
+                "os2": "",
+                "hd1": "",
+                "hd2": "",
+                "lowes": "",
+                "target": "",
+                "walmart": "",
+                "ebay": "",
+                "kohls": ""
+            }
+        }
+    
+    platform_links = {
+        "amazon1": links_data.get("amazon1", ""),
+        "amazon2": links_data.get("amazon2", ""),
+        "wf1": links_data.get("wf1", ""),
+        "wf2": links_data.get("wf2", ""),
+        "os1": links_data.get("os1", ""),
+        "os2": links_data.get("os2", ""),
+        "hd1": links_data.get("hd1", ""),
+        "hd2": links_data.get("hd2", ""),
+        "lowes": links_data.get("lowes", ""),
+        "target": links_data.get("target", ""),
+        "walmart": links_data.get("walmart", ""),
+        "ebay": links_data.get("ebay", ""),
+        "kohls": links_data.get("kohls", "")
+    }
+    
+    return {
+        "product_id": product_id,
+        "platformLinks": platform_links,
+        "updated_at": links_data.get("updated_at"),
+        "created_at": links_data.get("created_at"),
+        "updated_by": links_data.get("updated_by")
+    }
+
+
 @router.get("/platform-links/{product_id}")
 @monitor_api("get_product_platform_links")
 async def get_platform_links(product_id: str):
     """获取单个产品的平台链接"""
     try:
         links = await platform_links_service.get_platform_links(product_id)
-        if not links:
-            return {"product_id": product_id, "platformLinks": {}}
-        return links
+        return format_platform_links_response(links, product_id)
     except Exception as e:
         logger.error(f"Error getting platform links for {product_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -258,8 +320,21 @@ async def update_platform_links(product_id: str, updates: PlatformLinksUpdate):
     """更新产品平台链接"""
     try:
         result = await platform_links_service.update_platform_links(product_id, updates)
-        logger.info(f"Updated platform links for product {product_id}")
-        return result
+        
+        # 计算成功保存的链接数量
+        links_count = 0
+        if updates.platform_links:
+            links_count = sum(1 for v in updates.platform_links.values() if v)
+        
+        return {
+            "success": True,
+            "message": "平台链接已成功保存到数据库",
+            "productId": product_id,
+            "links": updates.platform_links,
+            "linksCount": links_count,
+            "savedAt": datetime.now().isoformat(),
+            "isNew": not await platform_links_service.get_platform_links(product_id)
+        }
     except Exception as e:
         logger.error(f"Error updating platform links for {product_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))

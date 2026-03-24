@@ -75,7 +75,7 @@ def monitor_api(endpoint_name: str):
                 logger.error(f"Error in {endpoint_name}: {str(e)}", exc_info=True)
                 raise
             finally:
-                ACTIVE_REQUESTS.de()
+                ACTIVE_REQUESTS.dec()
                 duration = time.time() - start_time
                 REQUEST_DURATION.labels(endpoint=endpoint_name, method=method).observe(duration)
         

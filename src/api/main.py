@@ -8,6 +8,8 @@ from datetime import datetime
 
 from ..db.mongodb import connect_to_mongo, close_mongo_connection
 from .unified import router as unified_router
+from .content_management import router as content_router
+from .platform_links import router as platform_router
 from ..utils.monitoring import monitor_middleware, get_metrics
 
 # 创建应用
@@ -22,6 +24,8 @@ app.middleware("http")(monitor_middleware)
 
 # 注册路由
 app.include_router(unified_router)
+app.include_router(content_router)
+app.include_router(platform_router)
 
 # 事件处理
 @app.on_event("startup")

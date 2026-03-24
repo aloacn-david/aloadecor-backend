@@ -42,8 +42,11 @@ class PlatformLinksService:
         
         existing = await self.get_platform_links(product_id)
         
-        update_data = updates.dict(exclude_unset=True)
+        # 提取平台链接到顶层
+        update_data = updates.platform_links.copy() if updates.platform_links else {}
         update_data["updated_at"] = datetime.now()
+        if updates.updated_by:
+            update_data["updated_by"] = updates.updated_by
         
         if existing:
             await self.collection.update_one(

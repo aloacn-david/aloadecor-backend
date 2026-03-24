@@ -241,12 +241,26 @@ async def get_all_platform_links():
 @router.get("/platform-links/{product_id}")
 @monitor_api("get_product_platform_links")
 async def get_platform_links(product_id: str):
-    """获取单个产品的平台链接"""
+    """获取单个产品的平台链接（统一返回格式）"""
     try:
         links = await platform_links_service.get_platform_links(product_id)
-        if not links:
-            return {"product_id": product_id, "platformLinks": {}}
-        return links
+        links = links or {}
+        
+        return {
+            "amazon1": links.get("amazon1", ""),
+            "amazon2": links.get("amazon2", ""),
+            "wf1": links.get("wf1", ""),
+            "wf2": links.get("wf2", ""),
+            "os1": links.get("os1", ""),
+            "os2": links.get("os2", ""),
+            "hd1": links.get("hd1", ""),
+            "hd2": links.get("hd2", ""),
+            "lowes": links.get("lowes", ""),
+            "target": links.get("target", ""),
+            "walmart": links.get("walmart", ""),
+            "ebay": links.get("ebay", ""),
+            "kohls": links.get("kohls", "")
+        }
     except Exception as e:
         logger.error(f"Error getting platform links for {product_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -256,10 +270,38 @@ async def get_platform_links(product_id: str):
 @monitor_api("update_platform_links")
 async def update_platform_links(product_id: str, updates: PlatformLinksUpdate):
     """更新产品平台链接"""
+    from datetime import datetime
     try:
         result = await platform_links_service.update_platform_links(product_id, updates)
         logger.info(f"Updated platform links for product {product_id}")
-        return result
+        
+        # 构建统一返回格式
+        links = result or {}
+        links_count = sum(1 for v in links.values() if v and isinstance(v, str) and v.strip())
+        
+        return {
+            "success": True,
+            "message": "平台链接已成功保存到数据库",
+            "productId": product_id,
+            "links": {
+                "amazon1": links.get("amazon1", ""),
+                "amazon2": links.get("amazon2", ""),
+                "wf1": links.get("wf1", ""),
+                "wf2": links.get("wf2", ""),
+                "os1": links.get("os1", ""),
+                "os2": links.get("os2", ""),
+                "hd1": links.get("hd1", ""),
+                "hd2": links.get("hd2", ""),
+                "lowes": links.get("lowes", ""),
+                "target": links.get("target", ""),
+                "walmart": links.get("walmart", ""),
+                "ebay": links.get("ebay", ""),
+                "kohls": links.get("kohls", "")
+            },
+            "linksCount": links_count,
+            "savedAt": datetime.now().isoformat(),
+            "isNew": not result
+        }
     except Exception as e:
         logger.error(f"Error updating platform links for {product_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))

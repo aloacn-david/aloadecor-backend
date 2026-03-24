@@ -2,7 +2,7 @@
 API接口模块
 提供RESTful API接口
 """
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 
@@ -56,6 +56,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# MongoDB连接中间件（确保连接已建立）
+@app.middleware("http")
+async def ensure_db_connection(request: Request, call_next):
+    """确保MongoDB连接已建立"""
+    from ..db.mongodb import db
+    if db is None:
+        try:
+            await connect_to_mongo()
+        except Exception as e:
+            print(f"MongoDB connection failed: {e}")
+    response = await call_next(request)
+    return response
+
 # 注册路由
 app.include_router(unified_router)
 app.include_router(content_router)
@@ -63,11 +76,11 @@ app.include_router(content_router)
 # 事件处理
 @app.on_event("startup")
 async def startup_event():
-    """启动时连接MongoDB（后台连接，不阻塞服务启动）"""
+    """启动时尝试连接MongoDB（但不阻塞服务启动）"""
     try:
         await connect_to_mongo()
     except Exception as e:
-        print(f"MongoDB connection failed: {e}, will retry on next request")
+        print(f"MongoDB connection failed on startup: {e}, will retry on first request")
 
 @app.on_event("shutdown")
 async def shutdown_event():

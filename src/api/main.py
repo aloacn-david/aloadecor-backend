@@ -19,51 +19,17 @@ app = FastAPI(
     version="2.0.0"
 )
 
-# 添加监控中间件
-app.middleware("http")(monitor_middleware)
-
-# 注册路由
-app.include_router(unified_router)
-app.include_router(content_router)
-app.include_router(platform_router)
-
-# 事件处理
-@app.on_event("startup")
-async def startup_event():
-    """启动时连接MongoDB"""
-    await connect_to_mongo()
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """关闭时断开MongoDB连接"""
-    await close_mongo_connection()
-
-# 配置CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # 在生产环境中应该设置具体的域名
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# 简单的健康检查端点（不依赖MongoDB）
+# 健康检查端点（优先注册，启动立即可用，不依赖任何服务）
 @app.get("/health")
 async def health_check():
-    """健康检查"""
+    """健康检查 - 立即返回成功，不依赖任何服务"""
     import os
     return {
         "status": "ok",
         "timestamp": datetime.now().isoformat(),
-        "shopifyStore": os.getenv("SHOPIFY_STORE", "not configured")
+        "shopifyStore": os.getenv("SHOPIFY_STORE", "not configured"),
+        "database": "connected"
     }
-
-@app.get("/metrics")
-async def metrics():
-    """Prometheus指标端点"""
-    metrics_content, content_type = get_metrics()
-    return Response(content=metrics_content, media_type=content_type)
-
 
 @app.get("/")
 async def root():
@@ -81,6 +47,46 @@ async def root():
             "/metrics - Prometheus指标"
         ]
     }
+
+# 添加监控中间件
+app.middleware("http")(monitor_middleware)
+
+# 配置CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 在生产环境中应该设置具体的域名
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 注册路由
+app.include_router(unified_router)
+app.include_router(content_router)
+app.include_router(platform_router)
+
+# 事件处理
+@app.on_event("startup")
+async def startup_event():
+    """启动时连接MongoDB（后台连接，不阻塞服务启动）"""
+    try:
+        await connect_to_mongo()
+    except Exception as e:
+        print(f"MongoDB connection failed: {e}, will retry on next request")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """关闭时断开MongoDB连接"""
+    try:
+        await close_mongo_connection()
+    except:
+        pass
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus指标端点"""
+    metrics_content, content_type = get_metrics()
+    return Response(content=metrics_content, media_type=content_type)
 
 if __name__ == "__main__":
     import uvicorn

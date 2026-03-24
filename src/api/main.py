@@ -18,7 +18,7 @@ app = FastAPI(
     version="2.0.0"
 )
 
-# 健康检查端点（优先注册，启动立即可用，不依赖任何服务）
+# 健康检查端点（优先注册，不添加任何中间件）
 @app.get("/health")
 async def health_check():
     """健康检查 - 立即返回成功，不依赖任何服务"""
@@ -46,9 +46,6 @@ async def root():
             "/metrics - Prometheus指标"
         ]
     }
-
-# 添加监控中间件
-app.middleware("http")(monitor_middleware)
 
 # 配置CORS
 app.add_middleware(

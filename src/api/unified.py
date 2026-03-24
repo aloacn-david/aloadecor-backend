@@ -275,8 +275,8 @@ async def update_platform_links(product_id: str, updates: PlatformLinksUpdate):
         result = await platform_links_service.update_platform_links(product_id, updates)
         logger.info(f"Updated platform links for product {product_id}")
         
-        # 构建统一返回格式
-        links = result or {}
+        # 使用输入的links来构建返回（因为service返回的可能有其他字段）
+        links = updates.platform_links or {}
         links_count = sum(1 for v in links.values() if v and isinstance(v, str) and v.strip())
         
         return {

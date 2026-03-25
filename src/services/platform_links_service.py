@@ -13,20 +13,13 @@ class PlatformLinksService:
     async def get_all_platform_links(self) -> List[Dict[str, Any]]:
         """获取所有产品的平台链接"""
         collection = get_collection("platform_links")
-        if not collection:
-            return []
-        
         cursor = collection.find().sort("updated_at", -1)
         results = await cursor.to_list(length=None)
-        
         return results
     
     async def get_platform_links(self, product_id: str) -> Optional[Dict[str, Any]]:
         """获取单个产品的平台链接"""
         collection = get_collection("platform_links")
-        if not collection:
-            return None
-        
         result = await collection.find_one({"product_id": product_id})
         return result
     
@@ -37,9 +30,6 @@ class PlatformLinksService:
     ) -> Dict[str, Any]:
         """更新产品平台链接"""
         collection = get_collection("platform_links")
-        if not collection:
-            raise Exception("Database not connected")
-        
         existing = await self.get_platform_links(product_id)
         
         # 提取平台链接到顶层
@@ -83,8 +73,5 @@ class PlatformLinksService:
     async def delete_platform_links(self, product_id: str) -> bool:
         """删除产品平台链接"""
         collection = get_collection("platform_links")
-        if not collection:
-            return False
-        
         result = await collection.delete_one({"product_id": product_id})
         return result.deleted_count > 0

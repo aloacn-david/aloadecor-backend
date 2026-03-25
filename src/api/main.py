@@ -32,7 +32,8 @@ async def root():
         "message": "ALOA DECOR Unified API",
         "version": "2.0.0",
         "endpoints": [
-            "/api/health - 健康检查"
+            "/api/health - 健康检查",
+            "/api/platform-links - 平台链接管理"
         ]
     }
 
@@ -44,6 +45,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 导入路由（确保在健康检查之后）
+from .unified import router as unified_router
+app.include_router(unified_router)
 
 if __name__ == "__main__":
     import uvicorn

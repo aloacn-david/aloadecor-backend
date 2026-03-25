@@ -10,33 +10,31 @@ from ..models.shopify import PlatformLinks, PlatformLinksUpdate
 class PlatformLinksService:
     """平台链接管理服务"""
     
-    def __init__(self):
-        self.collection = get_collection("platform_links")
-    
-    async def _ensure_connection(self):
-        """确保MongoDB连接已建立"""
-        if self.collection is None:
+    async def _get_collection(self):
+        """获取集合（每次都检查连接）"""
+        from ..db.mongodb import db
+        if db is None:
             await connect_to_mongo()
-            self.collection = get_collection("platform_links")
+        return get_collection("platform_links")
     
     async def get_all_platform_links(self) -> List[Dict[str, Any]]:
         """获取所有产品的平台链接"""
-        await self._ensure_connection()
-        if self.collection is None:
+        collection = await self._get_collection()
+        if collection is None:
             return []
         
-        cursor = self.collection.find().sort("updated_at", -1)
+        cursor = collection.find().sort("updated_at", -1)
         results = await cursor.to_list(length=None)
         
         return results
     
     async def get_platform_links(self, product_id: str) -> Optional[Dict[str, Any]]:
         """获取单个产品的平台链接"""
-        await self._ensure_connection()
-        if self.collection is None:
+        collection = await self._get_collection()
+        if collection is None:
             return None
         
-        result = await self.collection.find_one({"product_id": product_id})
+        result = await collection.find_one({"product_id": product_id})
         return result
     
     async def update_platform_links(
@@ -45,8 +43,8 @@ class PlatformLinksService:
         updates: PlatformLinksUpdate
     ) -> Dict[str, Any]:
         """更新产品平台链接"""
-        await self._ensure_connection()
-        if self.collection is None:
+        collection = await self._get_collection()
+        if collection is None:
             raise Exception("Database not connected")
         
         existing = await self.get_platform_links(product_id)
@@ -58,14 +56,14 @@ class PlatformLinksService:
             update_data["updated_by"] = updates.updated_by
         
         if existing:
-            await self.collection.update_one(
+            await collection.update_one(
                 {"product_id": product_id},
                 {"$set": update_data}
             )
         else:
             update_data["product_id"] = product_id
             update_data["created_at"] = datetime.now()
-            await self.collection.insert_one(update_data)
+            await collection.insert_one(update_data)
         
         return await self.get_platform_links(product_id)
     
@@ -91,9 +89,9 @@ class PlatformLinksService:
     
     async def delete_platform_links(self, product_id: str) -> bool:
         """删除产品平台链接"""
-        await self._ensure_connection()
-        if self.collection is None:
+        collection = await self._get_collection()
+        if collection is None:
             return False
         
-        result = await self.collection.delete_one({"product_id": product_id})
+        result = await collection.delete_one({"product_id": product_id})
         return result.deleted_count > 0

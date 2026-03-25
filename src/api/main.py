@@ -2,14 +2,10 @@
 API接口模块
 提供RESTful API接口
 """
-from fastapi import FastAPI, Response, Request
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
-
-from ..db.mongodb import connect_to_mongo, close_mongo_connection
-from .unified import router as unified_router
-from .content_management import router as content_router
-from ..utils.monitoring import monitor_middleware, get_metrics
+import os
 
 # 创建应用
 app = FastAPI(
@@ -22,7 +18,6 @@ app = FastAPI(
 @app.get("/health")
 async def health_check():
     """健康检查 - 立即返回成功，不依赖任何服务"""
-    import os
     return {
         "status": "ok",
         "timestamp": datetime.now().isoformat(),
@@ -56,18 +51,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# MongoDB连接中间件（确保连接已建立）
-@app.middleware("http")
-async def ensure_db_connection(request: Request, call_next):
-    """确保MongoDB连接已建立"""
-    from ..db.mongodb import db
-    if db is None:
-        try:
-            await connect_to_mongo()
-        except Exception as e:
-            print(f"MongoDB connection failed: {e}")
-    response = await call_next(request)
-    return response
+# 现在导入其他模块（确保健康检查先注册）
+from ..db.mongodb import connect_to_mongo, close_mongo_connection
+from .unified import router as unified_router
+from .content_management import router as content_router
+from ..utils.monitoring import monitor_middleware, get_metrics
+
+# 添加监控中间件（放在CORS之后）
+app.middleware("http")(monitor_middleware)
 
 # 注册路由
 app.include_router(unified_router)

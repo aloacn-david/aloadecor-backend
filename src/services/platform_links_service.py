@@ -22,7 +22,7 @@ class PlatformLinksService:
     async def get_all_platform_links(self) -> List[Dict[str, Any]]:
         """获取所有产品的平台链接"""
         await self._ensure_connection()
-        if not self.collection:
+        if self.collection is None:
             return []
         
         cursor = self.collection.find().sort("updated_at", -1)
@@ -33,7 +33,7 @@ class PlatformLinksService:
     async def get_platform_links(self, product_id: str) -> Optional[Dict[str, Any]]:
         """获取单个产品的平台链接"""
         await self._ensure_connection()
-        if not self.collection:
+        if self.collection is None:
             return None
         
         result = await self.collection.find_one({"product_id": product_id})
@@ -46,7 +46,7 @@ class PlatformLinksService:
     ) -> Dict[str, Any]:
         """更新产品平台链接"""
         await self._ensure_connection()
-        if not self.collection:
+        if self.collection is None:
             raise Exception("Database not connected")
         
         existing = await self.get_platform_links(product_id)
@@ -92,7 +92,7 @@ class PlatformLinksService:
     async def delete_platform_links(self, product_id: str) -> bool:
         """删除产品平台链接"""
         await self._ensure_connection()
-        if not self.collection:
+        if self.collection is None:
             return False
         
         result = await self.collection.delete_one({"product_id": product_id})

@@ -3,24 +3,17 @@
 """
 from typing import List, Optional, Dict, Any
 from datetime import datetime
-from ..db.mongodb import get_collection, connect_to_mongo
+from ..db.mongodb import get_collection
 from ..models.shopify import PlatformLinks, PlatformLinksUpdate
 
 
 class PlatformLinksService:
     """平台链接管理服务"""
     
-    async def _get_collection(self):
-        """获取集合（每次都检查连接）"""
-        from ..db.mongodb import db
-        if db is None:
-            await connect_to_mongo()
-        return get_collection("platform_links")
-    
     async def get_all_platform_links(self) -> List[Dict[str, Any]]:
         """获取所有产品的平台链接"""
-        collection = await self._get_collection()
-        if collection is None:
+        collection = get_collection("platform_links")
+        if not collection:
             return []
         
         cursor = collection.find().sort("updated_at", -1)
@@ -30,8 +23,8 @@ class PlatformLinksService:
     
     async def get_platform_links(self, product_id: str) -> Optional[Dict[str, Any]]:
         """获取单个产品的平台链接"""
-        collection = await self._get_collection()
-        if collection is None:
+        collection = get_collection("platform_links")
+        if not collection:
             return None
         
         result = await collection.find_one({"product_id": product_id})
@@ -43,8 +36,8 @@ class PlatformLinksService:
         updates: PlatformLinksUpdate
     ) -> Dict[str, Any]:
         """更新产品平台链接"""
-        collection = await self._get_collection()
-        if collection is None:
+        collection = get_collection("platform_links")
+        if not collection:
             raise Exception("Database not connected")
         
         existing = await self.get_platform_links(product_id)
@@ -89,8 +82,8 @@ class PlatformLinksService:
     
     async def delete_platform_links(self, product_id: str) -> bool:
         """删除产品平台链接"""
-        collection = await self._get_collection()
-        if collection is None:
+        collection = get_collection("platform_links")
+        if not collection:
             return False
         
         result = await collection.delete_one({"product_id": product_id})

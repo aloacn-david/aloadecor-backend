@@ -37,4 +37,6 @@ def get_db():
 
 # 获取集合
 def get_collection(collection_name: str):
-    return db[collection_name] if db else None
+    if db is None:
+        raise Exception("Database not connected")
+    return db[collection_name]
